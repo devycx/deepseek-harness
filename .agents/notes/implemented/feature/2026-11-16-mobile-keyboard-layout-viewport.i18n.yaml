@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for 2026-11-16-mobile-keyboard-layout-viewport.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-11-16-mobile-keyboard-layout-viewport.md
+/agent-note-mobile-keyboard-layout-viewport:
+  en: ae3f4f9d0d61a97f
+  zh: 4be62ccc4c2ef6dc
+/agent-note-mobile-keyboard-layout-viewport/problem:
+  en: 083df7511b49f8be
+  zh: 0b35de3c96e65e00
+/agent-note-mobile-keyboard-layout-viewport/decision:
+  en: acacc701390935e3
+  zh: a54a568526d14c9a
+/agent-note-mobile-keyboard-layout-viewport/alternatives-considered:
+  en: 39d417c9fe923318
+  zh: 664b18693108842e
+/agent-note-mobile-keyboard-layout-viewport/consequences:
+  en: 48c91b1332ab80c2
+  zh: 8253cb0f453219dd

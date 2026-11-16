@@ -719,3 +719,84 @@ it('releases a removed paging row without navigating to unrelated content', () =
   expect(h.viewport.preserving).toBe(false)
   expect(h.scroller.scrollTop).toBe(80)
 })
+
+it('holds the transcript through an on-screen keyboard changing the scrollport height', () => {
+  let notify: ResizeObserverCallback | undefined
+  class Observer implements ResizeObserver {
+    constructor(callback: ResizeObserverCallback) { notify = callback }
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  }
+  vi.stubGlobal('ResizeObserver', Observer)
+  onTestFinished(() => { vi.unstubAllGlobals() })
+  const scroller = document.createElement('div')
+  scroller.dataset.conversationScroll = ''
+  const list = document.createElement('div')
+  const column = document.createElement('div')
+  column.dataset.chatFlow = ''
+  list.append(column)
+  const seat = document.createElement('div')
+  seat.dataset.composerSeat = ''
+  const input = document.createElement('div')
+  input.setAttribute('contenteditable', 'true')
+  input.tabIndex = 0
+  seat.append(input)
+  scroller.append(list, seat)
+  document.body.append(scroller)
+  let height = 768
+  let top = 500
+  Object.defineProperties(scroller, {
+    clientHeight: { configurable: true, get: () => height },
+    scrollHeight: { configurable: true, value: 2_000 },
+    scrollTop: {
+      configurable: true,
+      get: () => top,
+      set: (value: number) => { top = Math.max(0, Math.min(value, 2_000 - height)) },
+    },
+  })
+  vi.spyOn(scroller, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 390, height))
+  const viewport = new ChatViewport()
+  onTestFinished(() => { viewport.detach(); scroller.remove() })
+  viewport.attach(list, column)
+  const causes: string[] = []
+  viewport.connect({ scroll: () => {}, scrollEnd: () => {}, resize: (cause) => { causes.push(cause) }, interact: () => {} })
+  viewport.acknowledge(scrollMetrics(scroller))
+  const deliver = notify
+  const observer: ResizeObserver = { observe: () => {}, unobserve: () => {}, disconnect: () => {} }
+  const observe = (target: Element, observed: number): void => {
+    const entry: ResizeObserverEntry = {
+      target, contentRect: new DOMRect(0, 0, 390, observed), borderBoxSize: [], contentBoxSize: [], devicePixelContentBoxSize: [],
+    }
+    deliver?.([entry], observer)
+  }
+  input.focus()
+  expect(document.activeElement).toBe(input)
+  // Chrome can reveal the focused composer by scrolling the port in the keyboard's frame.
+  top = 800
+  height = 432
+  observe(scroller, height)
+  expect(causes).toEqual(['keyboard'])
+  expect(top).toBe(500)
+  // A candidate bar resizing the keyboard keeps holding the same position.
+  height = 472
+  top = 800
+  observe(scroller, height)
+  expect(causes).toEqual(['keyboard', 'keyboard'])
+  expect(top).toBe(500)
+  // Content growth is not a keyboard change: the follow policy still owns the tail.
+  observe(column, 0)
+  expect(causes).toEqual(['keyboard', 'keyboard', 'layout'])
+  // Closing the keyboard returns the port to its pre-keyboard height.
+  height = 768
+  observe(scroller, height)
+  expect(causes).toEqual(['keyboard', 'keyboard', 'layout', 'layout'])
+  expect(top).toBe(500)
+  // An unfocused composer cannot raise a keyboard: a shrink is an ordinary layout resize.
+  input.blur()
+  top = 600
+  height = 432
+  observe(scroller, height)
+  expect(causes.at(-1)).toBe('layout')
+  expect(top).toBe(600)
+})

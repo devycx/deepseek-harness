@@ -19,10 +19,17 @@ export interface ViewportLanding {
   readonly turn: number | null
 }
 
+/**
+ * What changed a scrollport's own box.
+ * - `layout`: the shell around the transcript changed size — window, sidebar, or header.
+ * - `keyboard`: an on-screen keyboard took layout height below the focused composer.
+ */
+export type ViewportResize = 'layout' | 'keyboard'
+
 interface ViewportEvents {
   scroll: (event: ViewportScroll) => void
   scrollEnd: (outer: boolean) => void
-  resize: () => void
+  resize: (cause: ViewportResize) => void
   interact: () => void
   /** Any reading gesture, before paging ownership is consulted. */
   intent?: () => void
@@ -78,6 +85,10 @@ export class ChatViewport {
   private elements: ViewportElements | null = null
   private observer: ResizeObserver | null = null
   private events: ViewportEvents | null = null
+  /** The scrollport's own height at the latest size observation. */
+  private portHeight = 0
+  /** Scrollport height before an on-screen keyboard took layout height, or null while no keyboard changes it. */
+  private keyboardBase: number | null = null
   private turns: ReturnType<ChatSnapshot['navigation']['items']> = []
   private observation: { top: number; landing: ViewportLanding | null } = { top: 0, landing: null }
   private paging: PagingPosition | null = null
@@ -121,6 +132,8 @@ export class ChatViewport {
     const spacer = list.querySelector<HTMLElement>('[data-chat-turn-spacer]')
     const elements = { list, column, scroller, composer, spacer }
     this.elements = elements
+    this.portHeight = scroller.clientHeight
+    this.keyboardBase = null
     if (spacer !== null) spacer.style.height = ''
     scroller.addEventListener('scroll', this.onHistoryScroll, { passive: true, capture: true })
     scroller.addEventListener('pointerdown', this.onHistoryPointerDown, { passive: true, capture: true })
@@ -136,13 +149,15 @@ export class ChatViewport {
         if (this.elements !== elements) return
         // Read while layout is still clean, before this callback writes room or scroll positions. Those writes
         // leave the content height unchanged, so it is also the content this frame paints.
-        if (entries.some(entry => entry.target === elements.scroller)) this.historyHeight = elements.scroller.clientHeight
+        const portObserved = entries.some(entry => entry.target === elements.scroller)
+        if (portObserved) this.historyHeight = elements.scroller.clientHeight
         this.settledContent = elements.scroller.scrollHeight - this.spacerHeight()
+        const keyboard = portObserved && this.trackKeyboard(elements)
         this.keepAboveClosing()
         this.reclaimBelow()
         this.invalidate()
         this.pruneHistoryScrolling()
-        this.events?.resize()
+        this.events?.resize(keyboard ? 'keyboard' : 'layout')
       })
       this.observer.observe(column)
       this.observer.observe(scroller)
@@ -153,6 +168,8 @@ export class ChatViewport {
   /** Disconnect DOM resources and clear observations for the detached view. */
   detach(): void {
     this.historyPrepend = null
+    this.portHeight = 0
+    this.keyboardBase = null
     this.stopPreserving()
     this.motion.clear()
     if (this.elements !== null) this.elements.scroller.style.overflowAnchor = ''
@@ -180,6 +197,37 @@ export class ChatViewport {
     this.retarget = null
     this.turns = []
     this.observation = { top: 0, landing: null }
+  }
+
+  /**
+   * Keep the transcript where it was last acknowledged while an on-screen keyboard changes the
+   * scrollport's own height: the shorter port paints the same content at the same screen offset,
+   * and only the composer's sticky seat moves up with the keyboard. A keyboard keeps changing the
+   * port while it stays up (a candidate bar appears or goes), so those changes hold as well, until
+   * the port is back at its pre-keyboard height or the composer's field loses focus.
+   * @param elements - the elements of the size observation being applied.
+   * @returns whether an on-screen keyboard changed the port's height in this observation.
+   */
+  private trackKeyboard(elements: ViewportElements): boolean {
+    const scroller = elements.scroller
+    const height = scroller.clientHeight
+    if (height === this.portHeight) return false
+    const previous = this.portHeight
+    this.portHeight = height
+    if (this.keyboardBase === null) {
+      // An ordinary layout resize is not a keyboard transition: only a focused text field raises a
+      // keyboard, and only a shrink takes layout height below the composer.
+      if (height > previous || !composerTakesText(elements.composer)) return false
+      this.keyboardBase = previous
+    } else if (height >= this.keyboardBase || !composerTakesText(elements.composer)) {
+      this.keyboardBase = null
+      return false
+    }
+    // Scroll-into-view for the focused composer can move the port in the same frame; put the
+    // acknowledged position back, clamped to what the shorter port can show.
+    const top = Math.max(0, Math.min(this.observation.top, scroller.scrollHeight - height))
+    if (Math.abs(scroller.scrollTop - top) >= 0.5) scroller.scrollTop = top
+    return true
   }
 
   /**
@@ -1081,7 +1129,7 @@ export class ChatViewport {
     if (this.observation.landing !== null && this.elements.scroller.scrollTop === this.observation.top) return
     this.invalidate()
     if (this.paging !== null) {
-      this.events?.resize()
+      this.events?.resize('layout')
       return
     }
     const scroll = this.readScroll()
@@ -1127,4 +1175,18 @@ export function useChatViewport(): {
     return () => { viewport.detach() }
   }, [viewport])
   return { viewport, listRef, columnRef }
+}
+
+/**
+ * Whether the composer holds text-input focus, which is the only focus that raises an on-screen
+ * keyboard and therefore the only one that can take the scrollport's layout height.
+ * @param composer - the composer seat inside the scrollport; absent in views without one.
+ * @returns whether the focused element takes text input inside the composer.
+ */
+function composerTakesText(composer: HTMLElement | null): boolean {
+  if (composer === null) return false
+  const active = composer.ownerDocument.activeElement
+  if (!(active instanceof HTMLElement) || !composer.contains(active)) return false
+  return active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement
+    || active.isContentEditable || active.closest('[contenteditable="true"]') !== null
 }

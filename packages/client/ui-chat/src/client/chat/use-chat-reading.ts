@@ -1,7 +1,7 @@
 /** Follow-tail ownership, saved-position restoration, and sampled reader movement. */
 import { useLayoutEffect, useState } from 'react'
 import type { ChatScrollPosition, ChatViewSlotProps } from '../contract/slots.ts'
-import type { ChatViewport, ViewportLanding, ViewportScroll } from './use-chat-viewport.ts'
+import type { ChatViewport, ViewportLanding, ViewportResize, ViewportScroll } from './use-chat-viewport.ts'
 import { useScrollFollow, type ScrollFollow } from './use-scroll-follow.ts'
 
 const FOLLOW_THRESHOLD = 24
@@ -189,10 +189,16 @@ export class ChatReading {
     this.flushSample()
   }
 
-  /** Reconcile a layout change without overriding unsampled reader input. */
-  onResize(): void {
+  /**
+   * Reconcile a layout change without overriding unsampled reader input.
+   * @param cause - why the scrollport's own box changed size; a keyboard only lifts the composer.
+   */
+  onResize(cause: ViewportResize = 'layout'): void {
     if (this.pending) return
-    if (this.state.followingTail) this.followTail()
+    // The keyboard only lifts the composer above itself. Following the tail here would scroll the
+    // transcript by the keyboard's height and take the reader's place away while they type.
+    if (cause === 'keyboard') this.refreshActiveTurn()
+    else if (this.state.followingTail) this.followTail()
     else this.refreshActiveTurn()
   }
 

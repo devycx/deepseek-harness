@@ -2,7 +2,15 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- `interactive-widget=resizes-content` keeps the app inside the visible
+         area while an on-screen keyboard is open on Android Chromium. Chrome
+         108+ shrinks only the visual viewport by default, which leaves the
+         bottom-anchored composer behind the keyboard; this key restores the
+         layout resize the composer's sticky floor depends on. Chat holds the
+         transcript's scroll position across that resize, so the keyboard moves
+         the composer and nothing else. WebKit ignores the key, so iOS keeps its
+         own layout height. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="mobile-web-app-capable" content="yes" />

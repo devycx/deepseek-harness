@@ -125,14 +125,14 @@ export function useChatScroll(input: ChatScrollInput): ChatScrollState {
         if (content.current.opened) navigation.requestHistoryCheck()
       },
       intent: () => { cancelPendingFollow(); reading.interruptFollow() },
-      resize: () => {
+      resize: (cause) => {
         if (!content.current.opened) return
         navigation.requestHistoryCheck()
         if (navigation.contentCommitted()) {
           navigation.reconcile()
           return
         }
-        if (!content.current.input.deferCompletedTurns || !viewport.motion.foldActive()) reading.onResize()
+        if (!content.current.input.deferCompletedTurns || !viewport.motion.foldActive()) reading.onResize(cause)
         navigation.reconcile()
       },
     })

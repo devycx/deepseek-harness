@@ -151,6 +151,18 @@ it('lands a following reader at the tail and lets content growth consume the roo
   expect(h.follow.animating).toBe(false)
 })
 
+it('leaves the reader where they are when an on-screen keyboard changes the layout', () => {
+  const h = fixture(VISIBLE_ROW)
+  h.grow(3_000)
+  // The keyboard lifts the composer only; following here would scroll the text by its height.
+  h.reading.onResize('keyboard')
+  expect(h.list.scrollTop).toBe(2_000)
+  expect(h.reading.followingTail).toBe(true)
+  // An ordinary layout resize still keeps a following reader at the tail.
+  h.reading.onResize()
+  expect(h.list.scrollTop).toBe(2_600)
+})
+
 it('adds a reader\'s own scrolling during the fold to the position it keeps still', async () => {
   const h = fixture({ earlier: 100, later: 500, top: 2_000, following: false })
   h.viewport.motion.collapse(h.row, () => { h.row.hidden = true; h.grow(600) })
